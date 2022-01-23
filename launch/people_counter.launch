@@ -1,0 +1,15 @@
+<launch>
+<node pkg="people_lib_study" type="people_counter" name="people_counter" output="screen">
+
+        <!-- Common -->
+        <param name="input_topic" type="string" value="/points_no_wall" />
+        <param name="marker_topic" type="string" value="/people_classifier/markers" />
+        
+        <!-- CounterParameter (Circle) -->
+        <!-- Simulator -->
+        <param name="center_x" value="10" />
+        <param name="center_y" value="-5.5" />
+        <param name="radius" value="4" />
+
+    </node>
+</launch>

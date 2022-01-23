@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<launch>
+    <arg name="axis"    default="x"/>
+    <arg name="min_limits"  default="-4"/>
+    <arg name="max_limits"  default="1.0"/>
+    
+    <node pkg="people_lib_study" name="removewall_node" type="remove_wall">
+        <param name="compare_pcd_file"  value="/mnt/uclab_02.pcd"/>
+        <param name="resolution" value="0.5"/>
+        <param name="input_topic" value="/points_no_ground" />
+    </node>
+</launch>

@@ -1,0 +1,27 @@
+<launch>
+    <node pkg="people_lib_study" type="people_classifier" name="people_classifier" output="screen">
+
+        <!-- Common -->
+        <param name="input_topic_name" type="string" value="/points_no_wall" />
+        <param name="frame_id" type="string" value="map"/>
+        
+
+
+        <!-- Classify -->
+        <param name="range_file_name" type="string" value="$(find people_lib_study)/libsvm/pedestrian.range"/>
+        <param name="model_file_name" type="string" value="$(find people_lib_study)/libsvm/pedestrian.model"/>
+        <param name="human_probability" type="double" value="0.6" />
+
+        <!-- Clustering Param -->
+        <!-- <param name="max_cluster_size" type="int" value="5000" />
+        <param name="min_cluster_size" type="int" value="50" />
+        <param name="ratio_depth_tolerance" value="0.1" />
+        <param name="min_tolerance" value="0.1" />
+        <param name="max_tolerance" value="0.5" /> -->
+        <param name="max_cluster_size" type="int" value="5000" />
+        <param name="min_cluster_size" type="int" value="10" />
+        <param name="ratio_depth_tolerance" value="0.1" />
+        <param name="min_tolerance" value="0.1" />
+        <param name="max_tolerance" value="0.5" />
+    </node>
+</launch>
