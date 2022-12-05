@@ -33,6 +33,8 @@
 
 #include "../include/TimeMeasurement.h"
 
+
+
 class RemoveWall
 {
 public:
@@ -271,5 +273,157 @@ int main(int argc, char *argv[])
 {
     ros::init(argc, argv, "removewall_node");
     RemoveWall removewall;
+    return 0;
+}
+
+
+// ROS2
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp/qos.hpp
+#include "removewall.hpp"
+
+
+void  RemoveWall::CallBack(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+{
+
+    pcl::PointCloud<pcl::PointXYZI> cloud;
+    
+    // Change frame from map to velodyne
+    if (msg->header.frame_id == map_frame)
+    {
+        try
+        {
+            transform_stamped = tfBuffer.lookupTransform(map_frame, msg->header.frame_id, ros::Time(0));
+        }
+        catch (tf::TransformException ex)
+        {
+            ROS_ERROR("%s", ex.what());
+        }
+        // sensor_msgs::PointCloud2 transformed_cloud;
+        transformed_cloud = std::make_shared
+        Eigen::Matrix4f mat = tf2::transformToEigen(transform_stamped.transform).matrix().cast<float>();
+        pcl_ros::transformPointCloud(mat, *msg, transformed_cloud);
+        pcl::fromROSMsg(transformed_cloud, cloud);
+    }
+    else
+    {
+        pcl::fromROSMsg(*msg, cloud);
+    }
+
+    // cloud_ptr : Ptr of velodyne_msg
+    //   
+    pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_ptr(new pcl::PointCloud<pcl::PointXYZI>(cloud));
+    pcl::PointCloud<pcl::PointXYZI>::Ptr result(new pcl::PointCloud<pcl::PointXYZI>);
+
+    *result = RemoveWall::difference_extraction(cloud_base, cloud_ptr, resolution);
+
+    sensor_msgs::PointCloud2::Ptr pc2_cloud(new sensor_msgs::PointCloud2);
+    pcl::toROSMsg(*result, *pc2_cloud);
+    pc2_cloud->header.frame_id = map_frame;
+    pc2_cloud->header.stamp = ros::Time::now();
+
+    try
+    {
+        transform_stamped = tfBuffer.lookupTransform(velodyne_frame, map_frame, ros::Time(0));
+    }
+    catch (tf::TransformException ex)
+    {
+        ROS_ERROR("%s", ex.what());
+    }
+
+    sensor_msgs::PointCloud2::Ptr pc2_cloud_transformed(new sensor_msgs::PointCloud2);
+    // pcl_ros::transformPointCloud(map_frame, transform, *recent_cloud, transformed_cloud);
+    Eigen::Matrix4f mat2 = tf2::transformToEigen(transform_stamped.transform).matrix().cast<float>();
+    pcl_ros::transformPointCloud(mat2, *pc2_cloud, *pc2_cloud_transformed);
+
+    pc2_cloud_transformed->header.frame_id = velodyne_frame;
+    pc2_cloud_transformed->header.stamp = ros::Time::now();
+
+    pub_pc.publish(pc2_cloud_transformed);
+}
+
+RemoveWall::RemoveWall(const std::string& name_space, const rclcpp::NodeOptions& options)
+    : Node("remove_wall", name_space, options)
+{
+    sub_pc = this->create_subscription<sensor_msgs::msg::PointCloud>("/points_raw", rclcpp::QoS(10), std::bind(&RemoveWall::CallBack, this, std::placeholders::_1));
+}
+
+pcl::PointCloud<pcl::PointXYZI> RemoveWall::DifferentialPointCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_base, pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_test, float resolution = 0.1f)
+{
+    srand((unsigned int)time(NULL));
+
+
+    // Instantiate octree-based point cloud change detection class
+    pcl::octree::OctreePointCloudChangeDetector<pcl::PointXYZI> octree(resolution);
+
+
+    for (std::size_t i = 0; i < cloud_base->size(); ++i)
+    {
+        (*cloud_base)[i].x = 64.0f * rand() / (RAND_MAX + 1.0f);
+        (*cloud_base)[i].y = 64.0f * rand() / (RAND_MAX + 1.0f);
+        (*cloud_base)[i].z = 64.0f * rand() / (RAND_MAX + 1.0f);
+    }
+
+    // Add points from cloud_base to octree
+    octree.setInputCloud(cloud_base);
+    octree.addPointsFromInputCloud();
+
+    // Switch octree buffers: This resets octree but keeps previous tree structure in memory.
+    octree.switchBuffers();
+
+
+    for (std::size_t i = 0; i < cloud_test->size(); ++i)
+    {
+        (*cloud_test)[i].x = 64.0f * rand() / (RAND_MAX + 1.0f);
+        (*cloud_test)[i].y = 64.0f * rand() / (RAND_MAX + 1.0f);
+        (*cloud_test)[i].z = 64.0f * rand() / (RAND_MAX + 1.0f);
+    }
+
+    // Add points from cloud_test to octree
+    octree.setInputCloud(cloud_test);
+    octree.addPointsFromInputCloud();
+
+    std::vector<int> newPointIdxVector;
+
+    // Get vector of point indices from octree voxels which did not exist in previous buffer
+    octree.getPointIndicesFromNewVoxels(newPointIdxVector);
+
+    // Output points
+    std::cout << "Output from getPointIndicesFromNewVoxels:" << std::endl;
+    for (std::size_t i = 0; i < newPointIdxVector.size(); ++i)
+        std::cout << i << "# Index:" << newPointIdxVector[i]
+                  << "  Point:" << (*cloud_test)[newPointIdxVector[i]].x << " "
+                  << (*cloud_test)[newPointIdxVector[i]].y << " "
+                  << (*cloud_test)[newPointIdxVector[i]].z << std::endl;
+
+    pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_diff(new pcl::PointCloud<pcl::PointXYZI>); //出力先
+
+    //保管先のサイズの設定
+    cloud_diff->width = cloud_base->points.size() + cloud_test->points.size();
+    cloud_diff->height = 1;
+    cloud_diff->points.resize(cloud_diff->width * cloud_diff->height);
+    int n = 0; //差分点群の数を保存する
+
+    for (size_t i = 0; i < newPointIdxVector.size(); i++)
+    {
+        cloud_diff->points[i].x = cloud_test->points[newPointIdxVector[i]].x;
+        cloud_diff->points[i].y = cloud_test->points[newPointIdxVector[i]].y;
+        cloud_diff->points[i].z = cloud_test->points[newPointIdxVector[i]].z;
+        n++;
+    }
+
+    //差分点群のサイズの再設定
+    cloud_diff->width = n;
+    cloud_diff->height = 1;
+    cloud_diff->points.resize(cloud_diff->width * cloud_diff->height);
+    return *cloud_diff;
+}
+
+
+int main(int argc, char *argv[])
+{
+    rclcpp::init(argc, argv);
+    rclcpp::spin(std::make_shared<RemoveWall>());
+    rclcpp::shutdown();
     return 0;
 }
